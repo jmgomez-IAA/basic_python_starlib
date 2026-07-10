@@ -21,7 +21,7 @@ import sys
 
 DEVICE_INDEX = 1
 CHANNEL_NUMBER = 1  # puerto físico del Brick conectado al GR718B
-TARGET_SPEED_MBPS = 10.0  # float obligatorio, según setTxSignallingRate()
+TARGET_SPEED_MBPS = 100.0  # float obligatorio; el board soporta hasta 200 Mbit/s
 
 try:
     from STAR_system.STAR_system import STARSystem

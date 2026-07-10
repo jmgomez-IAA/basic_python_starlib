@@ -30,7 +30,7 @@ import time
 
 DEVICE_INDEX = 1
 CHANNEL_NUMBER = 1
-LINK_SPEED_MBPS = 10.0
+LINK_SPEED_MBPS = 100.0
 
 DUMP_START_ADDRESS = 0x00000000
 DUMP_END_ADDRESS = 0x00002FFC  # inclusive, último registro válido documentado
@@ -193,12 +193,16 @@ def main():
 
     dump = bytearray()
     failed_chunks = []
+    chunk_durations = []
     transaction_id = 1
+
+    dump_start_time = time.perf_counter()
 
     try:
         for i in range(num_chunks):
             address = DUMP_START_ADDRESS + i * CHUNK_SIZE
 
+            chunk_start_time = time.perf_counter()
             data = None
             error = None
             for attempt in range(MAX_RETRIES_PER_CHUNK + 1):
@@ -206,24 +210,45 @@ def main():
                 transaction_id = (transaction_id % 65535) + 1
                 if data is not None:
                     break
+            chunk_elapsed = time.perf_counter() - chunk_start_time
+            chunk_durations.append(chunk_elapsed)
 
             if data is None:
                 print(f"  [{i + 1}/{num_chunks}] 0x{address:08X}  FALLO tras "
-                      f"{MAX_RETRIES_PER_CHUNK + 1} intentos: {error}")
+                      f"{MAX_RETRIES_PER_CHUNK + 1} intentos: {error} "
+                      f"({chunk_elapsed * 1000:.1f} ms)")
                 failed_chunks.append((address, error))
                 dump.extend(b"\xff" * CHUNK_SIZE)  # relleno para no desalinear el volcado
             else:
-                print(f"  [{i + 1}/{num_chunks}] 0x{address:08X}  OK ({CHUNK_SIZE} bytes)")
+                print(f"  [{i + 1}/{num_chunks}] 0x{address:08X}  OK ({CHUNK_SIZE} bytes, "
+                      f"{chunk_elapsed * 1000:.1f} ms)")
                 dump.extend(data)
 
     finally:
         channel.close()
+
+    dump_total_elapsed = time.perf_counter() - dump_start_time
 
     print(f"\nVolcado completo: {len(dump)} bytes, {len(failed_chunks)} bloque(s) fallido(s).")
     if failed_chunks:
         print("Bloques fallidos (rellenados con 0xFF en el volcado):")
         for address, error in failed_chunks:
             print(f"  0x{address:08X}: {error}")
+
+    # --- Resumen de tiempos ---
+    avg_chunk_ms = (sum(chunk_durations) / len(chunk_durations)) * 1000 if chunk_durations else 0.0
+    min_chunk_ms = min(chunk_durations) * 1000 if chunk_durations else 0.0
+    max_chunk_ms = max(chunk_durations) * 1000 if chunk_durations else 0.0
+    throughput_kbps = (len(dump) / 1024) / dump_total_elapsed if dump_total_elapsed > 0 else 0.0
+    throughput_mbit = (len(dump) * 8 / 1_000_000) / dump_total_elapsed if dump_total_elapsed > 0 else 0.0
+
+    print("\n--- Tiempos ---")
+    print(f"Tiempo total del volcado:     {dump_total_elapsed:.3f} s")
+    print(f"Tiempo medio por bloque:      {avg_chunk_ms:.1f} ms  (min {min_chunk_ms:.1f} ms, max {max_chunk_ms:.1f} ms)")
+    print(f"Throughput efectivo:          {throughput_kbps:.1f} KB/s ({throughput_mbit:.2f} Mbit/s)")
+    print(f"  (velocidad nominal del enlace configurada: {LINK_SPEED_MBPS} Mbit/s — el throughput efectivo")
+    print(f"   es mucho menor porque incluye el overhead de cada transacción RMAP: construcción del")
+    print(f"   paquete, cabecera, ida y vuelta, no solo la transmisión de los 128 bytes de datos)")
 
     # --- Guardar volcado binario ---
     with open("gr718b_dump.bin", "wb") as f:

@@ -35,7 +35,7 @@ import sys
 
 DEVICE_INDEX = 1
 CHANNEL_NUMBER = 1  # ajusta si tu puerto físico conectado al GR718B es otro
-LINK_SPEED_MBPS = 10.0  # velocidad segura de arranque (float obligatorio)
+LINK_SPEED_MBPS = 100.0  # velocidad de operación (float obligatorio); el board soporta hasta 200 Mbit/s
 
 RTR_VER_ADDRESS = 0x00000A08
 DATA_LENGTH = 4  # registro de 32 bits
