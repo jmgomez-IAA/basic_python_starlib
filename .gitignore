@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Volcados de memoria generados por 07_dump_memory.py / 08_decode_dump.py
+gr718b_dump.bin
+gr718b_dump.txt
+
+# Configuración local (rutas de instalación específicas de cada máquina)
+config.local.yaml
+
+# Editores / IDEs
+.vscode/
+.idea/
+*.swp
+
+# Sistema
+.DS_Store
+Thumbs.db
