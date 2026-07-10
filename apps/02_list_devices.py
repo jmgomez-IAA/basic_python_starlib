@@ -17,6 +17,16 @@ except ImportError as e:
     print(f"FALLO al importar STAR_system: {e}")
     sys.exit(1)
 
+
+def device_type_name(dev_type) -> str:
+    """Devuelve el nombre legible del enum (IntEnum en Python 3.11+ imprime
+    solo el número con str() por defecto, de ahí que salga '19' en vez del
+    nombre)."""
+    try:
+        return STAR_DEVICE_TYPE(dev_type).name
+    except ValueError:
+        return f"desconocido ({dev_type})"
+
 print("Buscando dispositivos STAR-Dundee conectados...")
 try:
     devices = STARSystem.getDeviceListForType(STAR_DEVICE_TYPE.STAR_DEVICE_ALL)
@@ -40,7 +50,7 @@ for i, dev in enumerate(devices, start=1):
     except STARAPIError:
         serial = "?"
     try:
-        dev_type = dev.getDeviceType()
+        dev_type = device_type_name(dev.getDeviceType())
     except STARAPIError:
         dev_type = "?"
 

@@ -1,0 +1,135 @@
+--- a/apps/05_read_rtr_ver.py	2026-07-10 10:36:26.334441923 +0000
++++ b/apps/05_read_rtr_ver.py	2026-07-10 10:35:52.155360697 +0000
+@@ -35,6 +35,7 @@
+ 
+ DEVICE_INDEX = 1
+ CHANNEL_NUMBER = 1  # ajusta si tu puerto físico conectado al GR718B es otro
++LINK_SPEED_MBPS = 10.0  # velocidad segura de arranque (float obligatorio)
+ 
+ RTR_VER_ADDRESS = 0x00000A08
+ DATA_LENGTH = 4  # registro de 32 bits
+@@ -47,10 +48,12 @@
+     from STAR_system.STAR_system import STARSystem
+     from STAR_system.channel import Channel
+     from STAR_system.packet import Packet
++    from STAR_system.link_port import LinkPort
+     from STAR_system.STAR_enums import (
+         STAR_DEVICE_TYPE,
+         STAR_CHANNEL_DIRECTION,
+         STAR_TRANSFER_STATUS,
++        STAR_CFG_SPW_LINK_STATE,
+     )
+     from STAR_system.STAR_exceptions import STARAPIError
+     from STAR_system.rmap_packet_library import (
+@@ -67,6 +70,65 @@
+     return " ".join(f"{b:02X}" for b in data)
+ 
+ 
++def ensure_link_ready(device, port_number: int, target_speed_mbps: float) -> bool:
++    """
++    Comprueba el estado del enlace SpaceWire y lo deja arrancado a
++    `target_speed_mbps`. Devuelve True si el link queda en RUN, False si no.
++
++    Ver 06_check_link_and_set_speed.py para la versión standalone comentada
++    con más detalle sobre los campos de LinkStatus.
++    """
++    import time
++
++    try:
++        link_port = LinkPort(device.deviceID, port_number)
++    except (TypeError, ValueError) as e:
++        print(f"      FALLO al crear LinkPort: {e}")
++        return False
++
++    def _print_status(label):
++        try:
++            status = link_port.getSpaceWireLinkStatus()
++            rate = link_port.getTxSignallingRate()
++            try:
++                state_name = STAR_CFG_SPW_LINK_STATE(status.linkState).name
++            except (ValueError, AttributeError):
++                state_name = f"desconocido ({status.linkState})"
++            print(f"      [{label}] running={status.running} linkState={state_name} rate={rate} Mbit/s")
++            return status, rate
++        except STARAPIError as e:
++            print(f"      [{label}] FALLO al leer estado del link: {e}")
++            return None, None
++
++    status, rate = _print_status("actual")
++
++    already_ready = (
++        status is not None
++        and status.running
++        and status.linkState == STAR_CFG_SPW_LINK_STATE.STAR_CFG_SPW_LINK_STATE_RUN
++        and rate == target_speed_mbps
++    )
++    if already_ready:
++        print("      El link ya estaba listo, no hace falta tocar nada.")
++        return True
++
++    print(f"      Ajustando velocidad a {target_speed_mbps} Mbit/s y arrancando el link...")
++    try:
++        link_port.setTxSignallingRate(target_speed_mbps)
++        link_port.startLink()
++    except STARAPIError as e:
++        print(f"      FALLO al configurar el link: {e}")
++        return False
++
++    time.sleep(1)  # dar tiempo a renegociar
++
++    status, _ = _print_status("tras ajuste")
++    if status is None:
++        return False
++
++    return status.running and status.linkState == STAR_CFG_SPW_LINK_STATE.STAR_CFG_SPW_LINK_STATE_RUN
++
++
+ def main():
+     devices = STARSystem.getDeviceListForType(STAR_DEVICE_TYPE.STAR_DEVICE_ALL)
+     if not devices:
+@@ -79,9 +141,17 @@
+     device = devices[DEVICE_INDEX - 1]
+     print(f"Usando dispositivo: {device.getDeviceName()} (deviceID={device.deviceID})")
+ 
++    # --- 0. Asegurar que el enlace SpaceWire está arrancado a la velocidad deseada ---
++    print(f"\n[0/5] Comprobando/preparando enlace en puerto {CHANNEL_NUMBER}...")
++    link_ready = ensure_link_ready(device, CHANNEL_NUMBER, LINK_SPEED_MBPS)
++    if not link_ready:
++        print("      FALLO: el link no ha quedado en RUN. Abortando antes de enviar nada.")
++        sys.exit(1)
++    print("      OK: link en RUN.")
++
+     # --- 1. Construir el comando RMAP de lectura ---
+     transaction_id = 1
+-    print(f"\n[1/4] Construyendo comando RMAP de lectura hacia 0x{RTR_VER_ADDRESS:08X}...")
++    print(f"\n[1/5] Construyendo comando RMAP de lectura hacia 0x{RTR_VER_ADDRESS:08X}...")
+     try:
+         command_bytes, command_struct = RMAP_BuildReadCommandPacket(
+             targetAddress=TARGET_ADDRESS,
+@@ -100,7 +170,7 @@
+     print(f"      OK: {len(command_bytes)} bytes -> {hexlist(command_bytes)}")
+ 
+     # --- 2. Abrir el canal ---
+-    print(f"\n[2/4] Abriendo canal {CHANNEL_NUMBER}...")
++    print(f"\n[2/5] Abriendo canal {CHANNEL_NUMBER}...")
+     try:
+         channel = Channel(CHANNEL_NUMBER, device.deviceID)
+         channel.openChannelToDevice(STAR_CHANNEL_DIRECTION.INOUT)
+@@ -111,7 +181,7 @@
+ 
+     try:
+         # --- 3. Transmitir el comando ---
+-        print("\n[3/4] Transmitiendo comando RMAP...")
++        print("\n[3/5] Transmitiendo comando RMAP...")
+         packet = Packet(command_bytes)
+         try:
+             channel.transmitPacket(packet, timeout=1000)
+@@ -121,7 +191,7 @@
+         print("      OK: comando transmitido.")
+ 
+         # --- 4. Recibir la respuesta ---
+-        print("\n[4/4] Esperando respuesta...")
++        print("\n[4/5] Esperando respuesta...")
+         try:
+             status, reply_packet = channel.receivePacket(bufferLength=64, timeout=1000)
+         except STARAPIError as e:
