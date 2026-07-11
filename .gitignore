@@ -14,6 +14,9 @@ env/
 gr718b_dump.bin
 gr718b_dump.txt
 
+# Volcados de la base de datos.
+.csv
+
 # Configuración local (rutas de instalación específicas de cada máquina)
 config.local.yaml
 
